@@ -1,0 +1,69 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            make
+
+      - name: Cache vendored FFTW
+        uses: actions/cache@v4
+        with:
+          path: third_party/fftw/install
+          key: fftw-3.3.10-${{ runner.os }}-mingw64
+
+      - name: Build vendored FFTW (if not cached)
+        run: |
+          if [ ! -f third_party/fftw/install/lib/libfftw3f.a ]; then
+            bash scripts/build_fftw.sh
+          else
+            echo "FFTW from cache"
+          fi
+
+      - name: Configure (CMake + Ninja, Release)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Smoke test (headless, no GUI)
+        run: |
+          ./build/IridiScope.exe --sdr-list; code=$?
+          echo "sdr-list exit=$code"
+          if [ "$code" -gt 1 ]; then exit 1; fi
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/IridiScope.exe dist/
+          cp build/*.dll dist/ 2>/dev/null || true
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IridiScope-Windows-x64
+          path: dist/
+          if-no-files-found: error
