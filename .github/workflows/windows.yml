@@ -50,7 +50,12 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Smoke test (headless, no GUI)
+        # --sdr-list exits 0 with SDRplay compiled in, 1 without it
+        # (no SDRplay API on the runner) - both prove the exe runs.
+        # set +e first: the msys2 shell aborts on a failing command
+        # before the exit-code guard can run.
         run: |
+          set +e
           ./build/IridiScope.exe --sdr-list; code=$?
           echo "sdr-list exit=$code"
           if [ "$code" -gt 1 ]; then exit 1; fi
